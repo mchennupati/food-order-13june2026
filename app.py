@@ -10,6 +10,7 @@ then one quantity column per menu item). No database needed.
 
 import html
 import os
+import threading
 from datetime import datetime
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import parse_qs
@@ -25,6 +26,11 @@ MENU = [
     ("samosa", "Samosa", 2),
     ("bread_pakoda", "Bread Pakoda", 2),
 ]
+
+
+# Serializes file writes; the server is threaded so two requests can
+# touch orders.txt at the same time otherwise.
+FILE_LOCK = threading.Lock()
 
 
 def read_orders():
@@ -54,12 +60,32 @@ def read_orders():
 def append_order(name, items):
     quantities = [str(items.get(key, 0)) for key, _, _ in MENU]
     line = "\t".join([datetime.now().strftime("%Y-%m-%d %H:%M"), name] + quantities)
-    with open(ORDERS_FILE, "a", encoding="utf-8") as f:
-        f.write(line + "\n")
+    with FILE_LOCK:
+        with open(ORDERS_FILE, "a", encoding="utf-8") as f:
+            f.write(line + "\n")
     # Also log to stdout: on hosts with an ephemeral filesystem (e.g. Render
     # free tier) orders.txt is wiped on restart, but the host's log page
     # keeps these lines so orders can be recovered.
     print(f"ORDER\t{line}", flush=True)
+
+
+def delete_order(idx, name):
+    """Delete order number idx (0-based, as displayed) if the name matches.
+
+    The name check guards against deleting the wrong row when someone
+    else's add/delete shifted the indices between page load and click.
+    """
+    with FILE_LOCK:
+        orders = read_orders()
+        if not (0 <= idx < len(orders)) or orders[idx]["name"] != name:
+            return False
+        deleted = orders.pop(idx)
+        with open(ORDERS_FILE, "w", encoding="utf-8") as f:
+            for order in orders:
+                quantities = [str(order["items"].get(key, 0)) for key, _, _ in MENU]
+                f.write("\t".join([order["time"], order["name"]] + quantities) + "\n")
+    print(f"DELETE\t{deleted['time']}\t{deleted['name']}", flush=True)
+    return True
 
 
 def order_total(items):
@@ -87,15 +113,32 @@ def render_page():
         summary_rows = '<tr><td colspan="3">No orders yet</td></tr>'
 
     order_rows = ""
-    for order in orders:
+    for idx, order in enumerate(orders):
         item_list = ", ".join(
             f"{order['items'][key]}&times; {label}"
             for key, label, _ in MENU if key in order["items"]
         )
+        safe_name = html.escape(order["name"], quote=True)
+        # Escape for the JS string first (backslashes and quotes), then for
+        # HTML — the browser decodes entities in the attribute before the
+        # JS engine sees the string.
+        msg = (
+            f"You are deleting {order['name']}'s order "
+            f"({order_total(order['items'])} euros). Continue?"
+        )
+        confirm_msg = html.escape(
+            msg.replace("\\", "\\\\").replace("'", "\\'"), quote=True
+        )
         order_rows += (
             f"<tr><td>{html.escape(order['name'])}</td><td>{item_list}</td>"
             f"<td>{order_total(order['items'])} &euro;</td>"
-            f"<td>{html.escape(order['time'])}</td></tr>"
+            f"<td>{html.escape(order['time'])}</td>"
+            f'<td><form method="post" action="/delete" '
+            f"onsubmit=\"return confirm('{confirm_msg}')\">"
+            f'<input type="hidden" name="idx" value="{idx}">'
+            f'<input type="hidden" name="name" value="{safe_name}">'
+            f'<button type="submit" class="delete">Delete</button>'
+            f"</form></td></tr>"
         )
 
     menu_inputs = ""
@@ -127,6 +170,9 @@ def render_page():
   input[type=text] {{ width: 100%; padding: 0.4rem; box-sizing: border-box; margin: 0.3rem 0 0.8rem; }}
   button {{ background: #2d7a2d; color: white; border: none; padding: 0.6rem 1.4rem; border-radius: 6px; font-size: 1rem; cursor: pointer; }}
   button:hover {{ background: #246324; }}
+  button.delete {{ background: #b33; padding: 0.25rem 0.7rem; font-size: 0.85rem; }}
+  button.delete:hover {{ background: #922; }}
+  td form {{ border: none; padding: 0; margin: 0; }}
 </style>
 </head>
 <body>
@@ -151,8 +197,8 @@ def render_page():
 
 <h2>Orders so far</h2>
 <table>
-  <tr><th>Name</th><th>Items</th><th>Total</th><th>Time</th></tr>
-  {order_rows or '<tr><td colspan="4">No orders yet</td></tr>'}
+  <tr><th>Name</th><th>Items</th><th>Total</th><th>Time</th><th></th></tr>
+  {order_rows or '<tr><td colspan="5">No orders yet</td></tr>'}
 </table>
 </body>
 </html>"""
@@ -177,6 +223,18 @@ class OrderHandler(BaseHTTPRequestHandler):
         length = int(self.headers.get("Content-Length", 0))
         form = parse_qs(self.rfile.read(length).decode("utf-8"))
         name = form.get("name", [""])[0].strip().replace("\t", " ")
+
+        if self.path == "/delete":
+            try:
+                idx = int(form.get("idx", ["-1"])[0])
+            except ValueError:
+                idx = -1
+            delete_order(idx, name)
+            self.send_response(303)
+            self.send_header("Location", "/")
+            self.end_headers()
+            return
+
         items = {}
         for key, _, _ in MENU:
             try:
