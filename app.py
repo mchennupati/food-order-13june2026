@@ -145,8 +145,12 @@ def render_page():
     for key, label, price in MENU:
         menu_inputs += f"""
         <div class="item">
-          <label for="{key}">{label} ({price} &euro;)</label>
-          <input type="number" id="{key}" name="{key}" min="0" max="20" value="0">
+          <span class="item-label">{label} ({price} &euro;)</span>
+          <span class="stepper">
+            <button type="button" aria-label="one less {label}" onclick="step('{key}', -1)">&minus;</button>
+            <input type="number" id="{key}" name="{key}" min="0" max="20" value="0" inputmode="numeric" readonly>
+            <button type="button" aria-label="one more {label}" onclick="step('{key}', 1)">+</button>
+          </span>
         </div>"""
 
     return f"""<!DOCTYPE html>
@@ -164,8 +168,18 @@ def render_page():
   th {{ background: #f3f3f3; }}
   .summary {{ background: #f0f7f0; border: 1px solid #b8d8b8; border-radius: 8px; padding: 1rem; }}
   .summary .grand {{ font-size: 1.2rem; font-weight: bold; }}
-  .item {{ display: flex; justify-content: space-between; align-items: center; margin: 0.4rem 0; }}
-  .item input {{ width: 4rem; padding: 0.3rem; }}
+  .item {{ display: flex; justify-content: space-between; align-items: center; margin: 0.6rem 0; gap: 0.5rem; }}
+  .item-label {{ flex: 1; }}
+  .stepper {{ display: flex; align-items: center; gap: 0.3rem; }}
+  .stepper button {{ width: 2.8rem; height: 2.8rem; font-size: 1.5rem; line-height: 1;
+                     background: #eee; color: #222; border: 1px solid #bbb; border-radius: 8px;
+                     padding: 0; touch-action: manipulation; }}
+  .stepper button:hover {{ background: #ddd; }}
+  .stepper input {{ width: 2.5rem; height: 2.6rem; text-align: center; font-size: 1.2rem;
+                    border: 1px solid #ccc; border-radius: 6px; background: #fff;
+                    -moz-appearance: textfield; appearance: textfield; }}
+  .stepper input::-webkit-outer-spin-button,
+  .stepper input::-webkit-inner-spin-button {{ -webkit-appearance: none; margin: 0; }}
   form {{ border: 1px solid #ddd; border-radius: 8px; padding: 1rem; }}
   input[type=text] {{ width: 100%; padding: 0.4rem; box-sizing: border-box; margin: 0.3rem 0 0.8rem; }}
   button {{ background: #2d7a2d; color: white; border: none; padding: 0.6rem 1.4rem; border-radius: 6px; font-size: 1rem; cursor: pointer; }}
@@ -177,15 +191,6 @@ def render_page():
 </head>
 <body>
 <h1>Food Order &ndash; 13 June 2026</h1>
-
-<div class="summary">
-  <h2 style="margin-top:0">Summary</h2>
-  <table>
-    <tr><th>Item</th><th>Qty</th><th>Subtotal</th></tr>
-    {summary_rows}
-  </table>
-  <div class="grand">Total: {grand_total} &euro; &middot; {len(orders)} order(s)</div>
-</div>
 
 <h2>Add your order</h2>
 <form method="post" action="/">
@@ -200,6 +205,23 @@ def render_page():
   <tr><th>Name</th><th>Items</th><th>Total</th><th>Time</th><th></th></tr>
   {order_rows or '<tr><td colspan="5">No orders yet</td></tr>'}
 </table>
+
+<div class="summary">
+  <h2 style="margin-top:0">Summary</h2>
+  <table>
+    <tr><th>Item</th><th>Qty</th><th>Subtotal</th></tr>
+    {summary_rows}
+  </table>
+  <div class="grand">Total: {grand_total} &euro; &middot; {len(orders)} order(s)</div>
+</div>
+
+<script>
+function step(id, delta) {{
+  var input = document.getElementById(id);
+  var value = parseInt(input.value, 10) || 0;
+  input.value = Math.min(20, Math.max(0, value + delta));
+}}
+</script>
 </body>
 </html>"""
 
