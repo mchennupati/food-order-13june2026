@@ -11,10 +11,11 @@ then one quantity column per menu item). No database needed.
 import html
 import os
 from datetime import datetime
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import parse_qs
 
-PORT = 8000
+# Render (and most PaaS hosts) tell us which port to bind via $PORT
+PORT = int(os.environ.get("PORT", 8000))
 ORDERS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "orders.txt")
 
 # (key, label, price in euros)
@@ -55,6 +56,10 @@ def append_order(name, items):
     line = "\t".join([datetime.now().strftime("%Y-%m-%d %H:%M"), name] + quantities)
     with open(ORDERS_FILE, "a", encoding="utf-8") as f:
         f.write(line + "\n")
+    # Also log to stdout: on hosts with an ephemeral filesystem (e.g. Render
+    # free tier) orders.txt is wiped on restart, but the host's log page
+    # keeps these lines so orders can be recovered.
+    print(f"ORDER\t{line}", flush=True)
 
 
 def order_total(items):
@@ -192,7 +197,7 @@ class OrderHandler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    server = HTTPServer(("0.0.0.0", PORT), OrderHandler)
-    print(f"Order taker running at http://localhost:{PORT}")
-    print(f"Orders are saved to {ORDERS_FILE}")
+    server = ThreadingHTTPServer(("0.0.0.0", PORT), OrderHandler)
+    print(f"Order taker running on port {PORT}", flush=True)
+    print(f"Orders are saved to {ORDERS_FILE}", flush=True)
     server.serve_forever()

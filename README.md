@@ -21,6 +21,30 @@ python3 app.py
 Then open http://localhost:8000. Anyone on your network can reach it at
 `http://<your-ip>:8000`.
 
+## Deploy on Render
+
+Create a **Web Service** from this repo with:
+
+| Setting       | Value            |
+|---------------|------------------|
+| Runtime       | Python 3         |
+| Build command | *(leave empty)*  |
+| Start command | `python3 app.py` |
+
+No `requirements.txt` is needed — the app uses only the standard library.
+It binds to `0.0.0.0` and reads the port from Render's `PORT` env var
+automatically.
+
+**⚠️ Ephemeral filesystem:** on Render's free tier the disk resets on
+every deploy *and* every time the idle service spins down and wakes up,
+so `orders.txt` is wiped. As a safety net the app also prints every
+order to stdout (lines starting with `ORDER`), so you can recover all
+orders from the **Logs** tab in the Render dashboard even after a
+restart. To keep the service from spinning down during the ordering
+window, just open the page every ~10 minutes, or use a free uptime
+pinger. (A paid persistent disk would solve it properly, but for a
+one-day order the log backup is plenty.)
+
 - The **summary at the top** shows total quantity per item, subtotals, and
   the grand total in euros.
 - Each person enters their name, picks quantities, and submits.
