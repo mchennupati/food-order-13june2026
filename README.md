@@ -25,15 +25,16 @@ Then open http://localhost:8000. Anyone on your network can reach it at
 
 Create a **Web Service** from this repo with:
 
-| Setting       | Value            |
-|---------------|------------------|
-| Runtime       | Python 3         |
-| Build command | *(leave empty)*  |
-| Start command | `python3 app.py` |
+| Setting       | Value                                       |
+|---------------|---------------------------------------------|
+| Runtime       | Python 3                                    |
+| Build command | `pip install -r requirements.txt` (default) |
+| Start command | `python3 app.py`                            |
 
-No `requirements.txt` is needed — the app uses only the standard library.
-It binds to `0.0.0.0` and reads the port from Render's `PORT` env var
-automatically.
+`requirements.txt` is empty — the app uses only the standard library —
+but Render requires a build command, so the default pip install is a
+harmless no-op. The app binds to `0.0.0.0` and reads the port from
+Render's `PORT` env var automatically.
 
 **⚠️ Ephemeral filesystem:** on Render's free tier the disk resets on
 every deploy *and* every time the idle service spins down and wakes up,
